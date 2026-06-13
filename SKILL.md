@@ -106,8 +106,8 @@ plain language.
 ### Automating it (cron)
 
 A morning briefing can be pushed automatically, reusing the trading bot's
-`send-reminder.sh` notifier. Config in `scripts/briefing.env`
-(channel + target; defaults to Telegram → Kus, chat id `123456789`).
+`send-reminder.sh` notifier. Config (`NOTIFY_CHANNEL` + `NOTIFY_TARGET`)
+lives in the shared `skill.env` at the workspace root.
 
 ```bash
 bash scripts/setup-cron.sh    # installs 07:30 WIB Mon-Fri (before IDX opens)

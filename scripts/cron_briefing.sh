@@ -6,13 +6,13 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/home/kusa/bin:$PATH"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BRIEFING="$SCRIPT_DIR/market_briefing.py"
-ENV_FILE="$SCRIPT_DIR/briefing.env"
+ENV_FILE="$SCRIPT_DIR/../../../skill.env"
 SENDER="/home/kusa/bin/send-reminder.sh"
 LOG_FILE="/home/kusa/data/trading/cron_briefing.log"
 
-# Defaults (overridden by briefing.env)
+# Defaults (overridden by skill.env)
 NOTIFY_CHANNEL="whatsapp"
-NOTIFY_TARGET="+62XXXXXXXXXX"
+NOTIFY_TARGET="+6285692509990"
 # shellcheck disable=SC1090
 [ -f "$ENV_FILE" ] && source "$ENV_FILE"
 
