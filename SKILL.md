@@ -52,6 +52,17 @@ instead of generic web wisdom.
 | Reksadana, SBN, BPJS, pajak (pribadi & usaha), zakat, emas | `references/indonesia-context.md` |
 | Angka pajak/threshold/rate yang volatil | `references/rates.md` |
 
+**Topik lanjutan / berisiko tinggi** (jelaskan risikonya, jangan dorong; banyak yang
+di luar kebutuhan investor ritel biasa):
+
+| Topic | Read |
+|---|---|
+| Derivatif, opsi, futures, waran, hedging | `references/derivatives-options.md` |
+| Forex trading, leverage, broker bodong/robot-trading scam | `references/forex-trading.md` |
+| Crypto mendalam, DeFi, staking, wallet, regulasi | `references/crypto-defi.md` |
+| Valuasi korporat, DCF, WACC, multiple, margin of safety | `references/corporate-valuation.md` |
+| Pajak lintas negara, residensi, P3B/treaty, CRS, PPh 24 | `references/international-tax.md` |
+
 If a question spans several, read each relevant one. If none fit, answer from
 first principles but say so — and consider adding a new reference doc afterward.
 
