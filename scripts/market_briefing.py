@@ -13,7 +13,7 @@ import sys
 import json
 import time
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -33,8 +33,29 @@ BASKET = [
 ]
 
 
+_ID_DAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]  # Mon..Sun
+
+
+def as_of_label(market_time, gmtoffset):
+    """Format the last-quote time in the exchange's own timezone.
+
+    Returns e.g. 'Jum 12/6 16:00', or None if we can't tell. Using the
+    exchange tz (not WIB) keeps the close date correct — converting a US
+    16:00 close to WIB would roll it to the next day."""
+    if market_time is None:
+        return None
+    try:
+        # Shift the UTC epoch by the exchange offset, then read the wall-clock
+        # components — gives exchange-local date/time without a tz database.
+        local = datetime.fromtimestamp(
+            int(market_time) + int(gmtoffset or 0), tz=timezone.utc)
+        return f"{_ID_DAYS[local.weekday()]} {local.day}/{local.month} {local:%H:%M}"
+    except Exception:
+        return None
+
+
 def fetch_quote(symbol, retries=3):
-    """Return (last, prev_close) or None."""
+    """Return (last, prev_close, as_of) or None. as_of may be None."""
     url = (
         "https://query1.finance.yahoo.com/v8/finance/chart/"
         + urllib.parse.quote(symbol)
@@ -59,7 +80,8 @@ def fetch_quote(symbol, retries=3):
                 prev = meta.get("chartPreviousClose") or meta.get("previousClose")
             if last is None or prev is None:
                 return None
-            return float(last), float(prev)
+            as_of = as_of_label(meta.get("regularMarketTime"), meta.get("gmtoffset"))
+            return float(last), float(prev), as_of
         except Exception:
             time.sleep(1 + attempt)
     return None
@@ -84,18 +106,24 @@ def arrow(pct):
 
 
 def build_briefing():
-    today = datetime.now().strftime("%A, %d %B %Y")
-    lines = [f"📊 *Market Briefing* — {today}", ""]
+    now = datetime.now().strftime("%A, %d %b %Y, %H:%M WIB")
+    lines = [
+        f"📊 *Market Briefing* — {now}",
+        "Angka = harga penutupan terakhir tiap pasar.",
+        "",
+    ]
     quotes = {}
     for symbol, label, kind in BASKET:
         q = fetch_quote(symbol)
         if q is None:
             continue
-        last, prev = q
+        last, prev, as_of = q
         pct = (last - prev) / prev * 100 if prev else 0.0
-        quotes[symbol] = {"label": label, "last": last, "prev": prev, "pct": pct}
-        lines.append(f"{arrow(pct)} {label}: {fmt_value(last, kind)} ({pct:+.2f}%)")
-    if len(lines) <= 2:
+        quotes[symbol] = {"label": label, "last": last, "prev": prev,
+                          "pct": pct, "as_of": as_of}
+        tail = f" · tutup {as_of}" if as_of else ""
+        lines.append(f"{arrow(pct)} {label}: {fmt_value(last, kind)} ({pct:+.2f}%){tail}")
+    if len(lines) <= 3:
         return None, {}
     lines.append("")
     lines.append("_Bukan saran finansial. Data: Yahoo Finance (delayed)._")
