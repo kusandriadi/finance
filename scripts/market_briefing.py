@@ -8,6 +8,7 @@ briefing (no markdown tables — WhatsApp/Telegram safe).
 Usage:
     python3 market_briefing.py            # full briefing
     python3 market_briefing.py --json     # raw quotes as JSON
+    python3 market_briefing.py --mode ihsg-fx
 """
 import sys
 import json
@@ -20,16 +21,48 @@ import requests
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) finance-briefing/1.0"}
 
 # (symbol, label, value_format)  — value_format: "idr", "usd", "num", "pts"
-BASKET = [
-    ("^JKSE",    "IHSG",            "pts"),
-    ("IDR=X",    "USD/IDR",         "idr"),
-    ("XAUUSD=X", "Emas (XAU/USD)",  "usd"),
-    ("GC=F",     "Emas Futures",    "usd"),
-    ("^GSPC",    "S&P 500",         "pts"),
-    ("^IXIC",    "Nasdaq",          "pts"),
-    ("^N225",    "Nikkei 225",      "pts"),
-    ("CL=F",     "Minyak (WTI)",    "usd"),
-    ("BTC-USD",  "Bitcoin",         "usd"),
+MARKET_BASKET = [
+    ("^JKSE", "IHSG", "pts"),
+    ("XAUUSD=X", "Emas (XAU/USD)", "usd"),
+    ("GC=F", "Emas Futures", "usd"),
+    ("^GSPC", "S&P 500", "pts"),
+    ("^IXIC", "Nasdaq", "pts"),
+    ("^N225", "Nikkei 225", "pts"),
+    ("CL=F", "Minyak (WTI)", "usd"),
+    ("BZ=F", "Minyak (Brent)", "usd"),
+    ("BTC-USD", "Bitcoin", "usd"),
+]
+
+US_STOCKS = [
+    ("NVDA", "NVDA", "usd"),
+    ("GOOG", "GOOG", "usd"),
+    ("AAPL", "AAPL", "usd"),
+    ("MSFT", "MSFT", "usd"),
+    ("AMZN", "AMZN", "usd"),
+    ("SPCX", "SPCX", "usd"),
+    ("TSLA", "TSLA", "usd"),
+    ("AMD", "AMD", "usd"),
+    ("INTC", "INTC", "usd"),
+    ("GRAB", "GRAB", "usd"),
+]
+
+ID_STOCKS = [
+    ("BBCA.JK", "BBCA", "idr"),
+    ("BMRI.JK", "BMRI", "idr"),
+    ("BBRI.JK", "BBRI", "idr"),
+    ("BBNI.JK", "BBNI", "idr"),
+    ("BRIS.JK", "BRIS", "idr"),
+    ("BBTN.JK", "BBTN", "idr"),
+    ("TLKM.JK", "TLKM", "idr"),
+    ("ANTM.JK", "ANTM", "idr"),
+    ("PGAS.JK", "PGAS", "idr"),
+    ("ADMR.JK", "ADMR", "idr"),
+]
+
+FX_BASKET = [
+    ("SGDIDR=X", "SGD/IDR", "idr"),
+    ("MYRIDR=X", "RM/IDR", "idr"),
+    ("IDR=X", "USD/IDR", "idr"),
 ]
 
 
@@ -105,37 +138,114 @@ def arrow(pct):
     return "⚪️="
 
 
-def build_briefing():
-    now = datetime.now().strftime("%A, %d %b %Y, %H:%M WIB")
-    lines = [
-        f"📊 *Market Briefing* — {now}",
-        "Angka = harga penutupan terakhir tiap pasar.",
-        "",
-    ]
+def arrow_for_item(symbol, pct):
+    # FX quotes are stored as foreign-currency/IDR, but Kus wants color from
+    # Rupiah's perspective: green when IDR strengthens, red when IDR weakens.
+    if symbol in {item[0] for item in FX_BASKET}:
+        return arrow(-pct)
+    return arrow(pct)
+
+
+def display_pct_for_item(symbol, pct):
+    if symbol in {item[0] for item in FX_BASKET}:
+        return -pct
+    return pct
+
+
+def collect_quotes(items):
     quotes = {}
-    for symbol, label, kind in BASKET:
+    for symbol, label, kind in items:
         q = fetch_quote(symbol)
         if q is None:
+            quotes[symbol] = {"label": label, "kind": kind, "error": True}
             continue
         last, prev, as_of = q
         pct = (last - prev) / prev * 100 if prev else 0.0
-        quotes[symbol] = {"label": label, "last": last, "prev": prev,
-                          "pct": pct, "as_of": as_of}
-        tail = f" · tutup {as_of}" if as_of else ""
-        lines.append(f"{arrow(pct)} {label}: {fmt_value(last, kind)} ({pct:+.2f}%){tail}")
-    if len(lines) <= 3:
-        return None, {}
+        quotes[symbol] = {
+            "label": label,
+            "kind": kind,
+            "last": last,
+            "prev": prev,
+            "pct": pct,
+            "as_of": as_of,
+        }
+    return quotes
+
+
+def append_section(lines, title, items, quotes):
+    lines.append(title)
+    for symbol, label, _ in items:
+        q = quotes.get(symbol)
+        if not q or q.get("error"):
+            lines.append(f"⚪️= {label}: data tidak tersedia")
+            continue
+        pct = q["pct"]
+        display_pct = display_pct_for_item(symbol, pct)
+        tail = f" · tutup {q['as_of']}" if q.get("as_of") else ""
+        lines.append(
+            f"{arrow_for_item(symbol, pct)} {q['label']}: {fmt_value(q['last'], q['kind'])} ({display_pct:+.2f}%){tail}"
+        )
     lines.append("")
+
+
+def ihsg_summary(quotes):
+    ihsg = quotes.get("^JKSE")
+    if not ihsg or ihsg.get("error"):
+        return "IHSG"
+    pct = ihsg["pct"]
+    if pct > 0.05:
+        return f"IHSG naik {pct:.2f}%"
+    if pct < -0.05:
+        return f"IHSG turun {abs(pct):.2f}%"
+    return "IHSG flat 0.00%"
+
+
+def build_briefing(mode="full"):
+    now = datetime.now().strftime("%A, %d %b %Y, %H:%M WIB")
+    quotes = {}
+    quotes.update(collect_quotes(MARKET_BASKET))
+    quotes.update(collect_quotes(ID_STOCKS))
+    quotes.update(collect_quotes(FX_BASKET))
+    if mode == "full":
+        quotes.update(collect_quotes(US_STOCKS))
+
+    if mode == "ihsg-fx":
+        lines = [
+            f"📊 *IHSG Briefing* — {now}",
+            "",
+        ]
+        append_section(lines, f"Saham IHSG ({ihsg_summary(quotes)})", ID_STOCKS, quotes)
+        append_section(lines, "Mata uang asing ke rupiah", FX_BASKET, quotes)
+    else:
+        lines = [
+            f"📊 *Market Briefing* — {now}",
+            "Angka = harga penutupan terakhir tiap pasar/saham.",
+            "",
+        ]
+        append_section(lines, "Pasar utama", MARKET_BASKET, quotes)
+        append_section(lines, "Saham NASDAQ", US_STOCKS, quotes)
+        append_section(lines, f"Saham IHSG ({ihsg_summary(quotes)})", ID_STOCKS, quotes)
+        append_section(lines, "Mata uang asing ke rupiah", FX_BASKET, quotes)
+
+    if len(lines) <= 7:
+        return None, {}
     lines.append("_Bukan saran finansial. Data: Yahoo Finance (delayed)._")
     return "\n".join(lines), quotes
 
 
 def main():
+    mode = "full"
+    if "--mode" in sys.argv:
+        try:
+            mode = sys.argv[sys.argv.index("--mode") + 1]
+        except Exception:
+            sys.stderr.write("Missing value for --mode.\n")
+            sys.exit(2)
     if "--json" in sys.argv:
-        _, quotes = build_briefing()
+        _, quotes = build_briefing(mode=mode)
         print(json.dumps(quotes, indent=2, ensure_ascii=False))
         return
-    text, _ = build_briefing()
+    text, _ = build_briefing(mode=mode)
     if text is None:
         sys.stderr.write("No quotes fetched; skipping.\n")
         sys.exit(1)
